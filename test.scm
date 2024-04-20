@@ -1,6 +1,7 @@
 (import
  (owl toplevel)
- (owl lazy))
+ (owl sys))
 
 (λ (_)
-  (print "Hello, World!"))
+  (print (stat "Makefile" #t))
+  (print (file? "Makefile")))

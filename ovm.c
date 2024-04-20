@@ -731,28 +731,34 @@ word prim_sys(word op, word a, word b, word c) {
    case 37: /* umask mask → mask */
       return F(umask(immval(a)));
    case 38: /* stat fd|path follow → list */
-      /* if (immediatep(a) || stringp(a)) { */
-      /*    struct stat st; */
-      /*    int flg = b != IFALSE ? 0 : AT_SYMLINK_NOFOLLOW; */
-      /*    if ((allocp(a) ? fstatat(AT_FDCWD, (char *)a + W, &st, flg) : fstat(immval(a), &st)) == 0) { */
-      /*       word lst = INULL; */
-      /*       lst = cons(onum(st.st_blocks, 1), lst); */
-      /*       lst = cons(onum(st.st_blksize, 1), lst); */
-      /*       lst = cons(onum(st.st_ctim.tv_sec * INT64_C(1000000000) + st.st_atim.tv_nsec, 1), lst); */
-      /*       lst = cons(onum(st.st_mtim.tv_sec * INT64_C(1000000000) + st.st_atim.tv_nsec, 1), lst); */
-      /*       lst = cons(onum(st.st_atim.tv_sec * INT64_C(1000000000) + st.st_atim.tv_nsec, 1), lst); */
-      /*       lst = cons(onum(st.st_size, 1), lst); */
-      /*       lst = cons(onum(st.st_rdev, 0), lst); */
-      /*       lst = cons(onum(st.st_gid, 0), lst); */
-      /*       lst = cons(onum(st.st_uid, 0), lst); */
-      /*       lst = cons(onum(st.st_nlink, 0), lst); */
-      /*       lst = cons(onum(st.st_mode, 0), lst); */
-      /*       lst = cons(onum(st.st_ino, 0), lst); */
-      /*       lst = cons(onum(st.st_dev, 1), lst); */
-      /*       return lst; */
-      /*    } */
-      /* } */
-      not_implemented("stat", "i'm too lazy sorry");
+      if (immediatep(a) || stringp(a)) {
+         struct stat st;
+         int fd;
+         if (b != IFALSE)
+            fd = open((char*)a + W, O_RDONLY);
+         else
+            fd = immval(a);
+
+         if (fstat(fd, &st) == 0) {
+            word lst = INULL;
+            lst = cons(onum(0, 1), lst);
+            lst = cons(onum(0, 1), lst);
+            lst = cons(onum(st.st_ctime, 1), lst);
+            lst = cons(onum(st.st_mtime, 1), lst);
+            lst = cons(onum(st.st_atime, 1), lst);
+            lst = cons(onum(st.st_size, 1), lst);
+            lst = cons(onum(st.st_rdev, 0), lst);
+            lst = cons(onum(st.st_gid, 0), lst);
+            lst = cons(onum(st.st_uid, 0), lst);
+            lst = cons(onum(st.st_nlink, 0), lst);
+            lst = cons(onum(st.st_mode, 0), lst);
+            lst = cons(onum(st.st_ino, 0), lst);
+            lst = cons(onum(st.st_dev, 1), lst);
+            if (b != IFALSE)
+               close(fd);
+            return lst;
+         }
+      }
       return INULL;
    case 39: /* chmod fd|path mode follow → bool */
       /* if ((immediatep(a) || stringp(a)) && fixnump(b)) { */

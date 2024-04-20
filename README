@@ -2,10 +2,6 @@ a rather underwhelming port of ovm.c to win32.
 where port == mark almost everything posix not_implemented
 
   $ make all
-  $ wine test.exe
-  vm-error: setup: not implemented: tcgetattr (no termios)
-  Hello, World!
-  vm-error: setdown: not implemented: setdown (no termios)
 
 download pre-compiled:
 * https://pub.krzysckh.org/ovm.exe
