@@ -1,0 +1,20 @@
+a rather underwhelming port of ovm.c to win32.
+where port == mark almost everything posix not_implemented
+
+  $ make all
+  $ wine test.exe
+  vm-error: setup: not implemented: tcgetattr (no termios)
+  Hello, World!
+  vm-error: setdown: not implemented: setdown (no termios)
+
+download pre-compiled:
+* https://pub.krzysckh.org/ovm.exe
+* https://pub.krzysckh.org/ol.exe
+* https://pub.krzysckh.org/ol-angry.exe (ol.exe with not_implemented messages)
+
+CAVEATS
+
+* you need a working owl on unix setup to compile this
+* most OS stuff is not implemented.
+* ol.exe doesn't contain win32 runtime. if you want to compile to C,
+  you need to use `ol.exe -C ovm.c` to use this ovm.c as runtime.

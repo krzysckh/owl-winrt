@@ -1,0 +1,6 @@
+ol.c
+*.exe
+makeol
+test.c
+ol.c
+*.~undo-tree~
