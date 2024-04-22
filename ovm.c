@@ -732,13 +732,8 @@ word prim_sys(word op, word a, word b, word c) {
       free(args);
       return IFALSE; }
    case 18: { /* fork → #f: failed, 0: we're in child process, integer: we're in parent process */
-      PROCESS_INFORMATION pi;
-      BOOL ok = CreateProcess(NULL, NULL, NULL, NULL, FALSE, 0, NULL, NULL, NULL, &pi);
-
-      if (ok)
-         return onum(GetCurrentProcessId(), 1);
-      else
-         return IFALSE;
+      not_implemented("fork", "fuck");
+      return IFALSE;
    }
    case 19: { /* wait <pid> <respair> _ */
       not_implemented("wait", "i'm too lazy sorry");
