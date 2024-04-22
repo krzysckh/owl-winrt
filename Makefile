@@ -21,7 +21,7 @@ ol-winlegacy.exe: ol.c
 	$(CC_LEGACY) -DSILENT -o ol-winlegacy.exe $(CFLAGS) ol.c $(LDFLAGS)
 ol-angry.exe: ol.c
 	$(CC) -o ol-angry.exe $(CFLAGS) ol.c $(LDFLAGS)
-test: ol.exe
+test: ol-angry.exe
 	$(MAKE) -C t
 clean:
 	rm -f  ol.c *.exe makeol test.c ol.c

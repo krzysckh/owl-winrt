@@ -1171,6 +1171,13 @@ word vm(word *ob, word arg) {
          if (A0 == load_imms[op >> 6])
             ip += ip[2] << 8 | ip[1];
          NEXT(3);
+      case 17: { /* fxbits num mask pos r, unsafe */
+         /* r = (num & (mask << pos)) >> pos */
+         int num = immval(A0);
+         int mask = immval(A1);
+         int pos = immval(A2);
+         A3 = F((num & (mask << pos)) >> pos);
+         NEXT(4); }
       case 18: /* fxand a b r, prechecked */
          A2 = A0 & A1;
          NEXT(3);
