@@ -1,9 +1,12 @@
 a rather underwhelming port of ovm.c to win32.
-where port == mark almost everything posix not_implemented
+----------------------------------------------
 
+BUILDING
+
+  $ $EDITOR Makefile # use common sense
   $ make all
 
-download pre-compiled:
+or download pre-compiled:
 * https://pub.krzysckh.org/ovm.exe
 * https://pub.krzysckh.org/ol.exe
 * https://pub.krzysckh.org/ol-angry.exe (ol.exe with not_implemented messages)
@@ -11,6 +14,20 @@ download pre-compiled:
 CAVEATS
 
 * you need a working owl on unix setup to compile this
-* most OS stuff is not implemented.
 * ol.exe doesn't contain win32 runtime. if you want to compile to C,
   you need to use `ol.exe -C ovm.c` to use this ovm.c as runtime.
+* main TODOS:
+  * crucial:
+    [ ] - threading
+    [x] - networking
+    [ ] - wait
+    [ ] - kill
+  * non-crucial:
+    [ ] - fork
+    [ ] - fcntl
+    [ ] - raw terminal operatins
+    [ ] - {,sym,read}link
+    [ ] - chmod
+    [ ] - chown
+  * qol:
+    [ ] - embed ovm.c inside ol.exe
