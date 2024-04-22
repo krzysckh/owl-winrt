@@ -1,6 +1,7 @@
 /* -*- mode: c; c-basic-offset: 3 -*- */
 /* Owl Lisp runtime */
 
+#include <stdint.h>
 #ifdef NOT_RT
 static void* heap = 0;
 #endif
@@ -122,7 +123,7 @@ word mkstring(char *s);
 #ifdef SILENT
 #define not_implemented(s, why) (void)0;
 #else
-#define not_implemented(s, why) fprintf(stderr, "vm-error: %s: not implemented: %s (%s)\n", __func__, s, why)
+#define not_implemented(s, why) fprintf(stderr, "vm-error: %s: not implemented: %s (why?: %s)\n", __func__, s, why)
 #endif
 
 #ifdef PRIM_CUSTOM
@@ -418,45 +419,92 @@ word mkstring(char *s) {
 
 /*** Primops called from VM and generated C-code ***/
 
+/* win32 sockets are not ports, so you cannot write() to them */
+int sockets[2<<10] = {0}, sockets_n = 0;
+
+short
+issocket(int fd)
+{
+   int i;
+   for (i = 0; i < sockets_n; ++i)
+      if (sockets[i] == fd)
+         return 1;
+   return 0;
+}
+
+int
+w32write(int fd, char* buf, size_t n)
+{
+   if (issocket(fd))
+      return send(fd, buf, n, 0);
+
+   return write(fd, buf, n);
+}
+
+int
+w32read(int fd, char* buf, size_t n)
+{
+   if (issocket(fd))
+      return recv(fd, buf, n, 0);
+
+   return read(fd, buf, n);
+}
+
+int
+w32close(int fd)
+{
+   int i;
+
+   for (i = 0; i < sockets_n; ++i)
+      if (sockets[i] == fd) {
+         for (; i < sockets_n; ++i)
+            sockets[i] = sockets[i-1];
+         break;
+      }
+
+   return close(fd);
+}
+
+
 hval prim_connect(word *host, word port, word type) {
-    SOCKET sock;
-    byte *ip = (byte *)host + W;
-    unsigned long ipfull;
-    struct sockaddr_in addr;
-    int addr_len = sizeof(addr);
-    char udp = (immval(type) == 1);
-    port = immval(port);
+   int sock;
+   byte *ip = (byte *)host + W;
+   unsigned long ipfull;
+   struct sockaddr_in addr;
+   char udp = (immval(type) == 1);
+   port = immval(port);
 
-    // Initialize Winsock
-    WSADATA wsaData;
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
-        return IFALSE;
+   WSADATA wsa;
+   if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
+      return IFALSE;
 
-    if ((sock = socket(AF_INET, (udp ? SOCK_DGRAM : SOCK_STREAM), (udp ? IPPROTO_UDP : IPPROTO_TCP))) == INVALID_SOCKET) {
-        WSACleanup();
-        return IFALSE;
-    }
+   if ((sock = socket(AF_INET, (udp ? SOCK_DGRAM : SOCK_STREAM), (udp ? IPPROTO_UDP : IPPROTO_TCP))) == INVALID_SOCKET) {
+      WSACleanup();
+      return IFALSE;
+   }
 
-    if (udp)
-        return make_immediate(sock, TPORT);
+   if (udp)
+      return make_immediate(sock, TPORT);
 
-    if (!allocp(host)) /* bad host type */
-        return IFALSE;
+   if (!allocp(host)) /* bad host type */
+      return IFALSE;
 
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = (ULONG)host[1]; // Assuming host[1] contains the IP address in network byte order
+   addr.sin_family = AF_INET;
+   addr.sin_port = htons(port);
+   /* addr.sin_addr.s_addr = (ULONG)host[1]; */
 
-    ipfull = ip[0] << 24 | ip[1] << 16 | ip[2] << 8 | ip[3];
-    addr.sin_addr.s_addr = htonl(ipfull);
+   ipfull = ip[0] << 24 | ip[1] << 16 | ip[2] << 8 | ip[3];
+   addr.sin_addr.s_addr = htonl(ipfull);
 
-    if (connect(sock, (struct sockaddr *) &addr, sizeof(struct sockaddr_in)) == SOCKET_ERROR) {
-        closesocket(sock);
-        WSACleanup();
-        return IFALSE;
-    }
+   if (connect(sock, (struct sockaddr *) &addr, sizeof(struct sockaddr_in)) < 0) {
+      closesocket(sock);
+      WSACleanup();
+      return IFALSE;
+   }
 
-    return make_immediate(sock, TPORT);
+   sockets[sockets_n++] = sock;
+
+   return make_immediate(sock, TPORT);
 }
 
 word prim_less(word a, word b) {
@@ -556,7 +604,7 @@ word prim_sys(word op, word a, word b, word c) {
       }
       return IFALSE;
    case 2:
-      return BOOL(close(immval(a)) == 0);
+      return BOOL(w32close(immval(a)) == 0);
    case 3: { /* 3 = sopen port 0=tcp|1=udp -> False | fd  */
       int port = immval(a);
       int type = immval(b);
@@ -600,7 +648,7 @@ word prim_sys(word op, word a, word b, word c) {
          size_t len = memend - fp;
          const size_t max = len > MAXOBJ ? MAXPAYL : (len - 1) * W;
          len = cnum(b);
-         len = read(immval(a), fp + 1, len < max ? len : max);
+         len = w32read(immval(a), fp + 1, len < max ? len : max);
          if (len == 0)
             return IEOF;
          if (len != (size_t)-1)
@@ -753,6 +801,7 @@ word prim_sys(word op, word a, word b, word c) {
       not_implemented("termios", "no termios");
       return IFALSE;
    case 27: { /* sendmsg sock (port . ipv4) bvec */
+      WSADATA wsa;
       int sock = immval(a);
       int port;
       struct sockaddr_in peer;
@@ -879,7 +928,7 @@ word prim_sys(word op, word a, word b, word c) {
          size_t len, size = payl_len(header(b));
          len = c != IFALSE ? cnum(c) : size;
          if (len <= size) {
-            len = write(immval(a), (const word *)b + 1, len);
+            len = w32write(immval(a), (const word *)b + 1, len);
             if (len != (size_t)-1)
                return onum(len, 0);
          }
