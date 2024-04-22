@@ -193,6 +193,7 @@ void catch_signal(int signal) {
 
 /*** Globals and Prototypes ***/
 
+WSADATA wsa;
 extern char **environ;
 
 /* memstart <= genstart <= memend */
@@ -474,12 +475,7 @@ hval prim_connect(word *host, word port, word type) {
    char udp = (immval(type) == 1);
    port = immval(port);
 
-   WSADATA wsa;
-   if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
-      return IFALSE;
-
    if ((sock = socket(AF_INET, (udp ? SOCK_DGRAM : SOCK_STREAM), (udp ? IPPROTO_UDP : IPPROTO_TCP))) == INVALID_SOCKET) {
-      WSACleanup();
       return IFALSE;
    }
 
@@ -498,7 +494,6 @@ hval prim_connect(word *host, word port, word type) {
 
    if (connect(sock, (struct sockaddr *) &addr, sizeof(struct sockaddr_in)) < 0) {
       closesocket(sock);
-      WSACleanup();
       return IFALSE;
    }
 
@@ -801,7 +796,6 @@ word prim_sys(word op, word a, word b, word c) {
       not_implemented("termios", "no termios");
       return IFALSE;
    case 27: { /* sendmsg sock (port . ipv4) bvec */
-      WSADATA wsa;
       int sock = immval(a);
       int port;
       struct sockaddr_in peer;
@@ -1614,6 +1608,10 @@ void setup(int nwords, int nobjs) {
 int main(int nargs, char **argv) {
    word *prog;
    int rval, nobjs=0, nwords=0;
+
+   if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
+      return IFALSE;
+
    find_heap(&nargs, &argv, &nobjs, &nwords);
    setup(nwords, nobjs);
    prog = load_heap(nobjs);
