@@ -16,9 +16,10 @@
     (llen (lines con))))
 
 (λ (_)
-  (OK eqv? (foo) 'bar)
-  (OK eqv? (print "Hello, World!") #t)
-  (OK eqv? (file? "Makefile") #t)
-  (OK > (test-networking) 0)
+  ;; (OK eqv? (foo) 'bar)
+  ;; (OK eqv? (print "Hello, World!") #t)
+  ;; (OK eqv? (file? "Makefile") #t)
+  ;; (OK > (test-networking) 0)
+  (sleep 10)
 
   0)

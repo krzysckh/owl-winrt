@@ -37,7 +37,9 @@ typedef intptr_t wdiff;
 /*** Macros ***/
 
 #define MIN2(a,b)                   ((a)<(b)?(a):(b))
+#define ABS(a)                      ((a<0)?-(a):(a))
 #define mkport(fd)                  make_immediate(fd, TPORT)
+#define cstr(s)                     ((char*)s+W) /* word as cstring */
 #define IPOS                        8 /* offset of immediate payload */
 #define SPOS                        16 /* offset of size bits in header immediate values */
 #define TPOS                        2  /* offset of type bits in header */
@@ -86,6 +88,7 @@ typedef intptr_t wdiff;
 #define TBYTECODE                   16
 #define TPROC                       17
 #define TCLOS                       18
+#define TRAT                        42
 #define F(value)                    make_immediate(value, TNUM)
 #define stringp(ob)                 (allocp(ob) && (V(ob) & make_header(0, 63)) == make_header(0, TSTRING))
 #define FLAG                        1
@@ -118,8 +121,9 @@ word mkint(uint64_t x);
 int64_t cnum(word a);
 word onum(int64_t n, uint s);
 word mkstring(char *s);
+word mkrat(int64_t p, int64_t q);
+word mkfloat(float f);
 #endif
-
 #ifdef SILENT
 #define not_implemented(s, why) (void)0;
 #else
@@ -413,10 +417,37 @@ word mkstring(char *s) {
       max = len > MAXOBJ ? MAXPAYL + 1 : (len - 1) * W,
       sl = MIN2(max-1, strlen(s));
 
-
    strncpy((char *)fp + W, s, sl);
    return mkraw(TSTRING, sl);
 }
+word mkrat(int64_t p, int64_t q) {
+   word s = 2, *ob, po = onum(p, 1), qo = onum(q, 1);
+
+   allocate(s+1, ob);
+   *ob = make_header(s+1, TRAT);
+
+   ob[1] = po;
+   ob[2] = qo;
+
+   return (word)ob;
+}
+
+word mkfloat(float f) {
+   int64_t v = 1, m = f < 0;
+   f = ABS(f);
+
+   if (f >= (float)INT64_MAX)
+      return IFALSE;
+
+   while ((float)(f - (int64_t)f) > 0.0) {
+      f *= 10, v *= 10;
+      if (v < 0) /* v overflew */
+        return IFALSE;
+   }
+
+   return mkrat(m ? -f : f, v);
+}
+
 
 /*** Primops called from VM and generated C-code ***/
 
