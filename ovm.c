@@ -19,8 +19,15 @@ static void* heap = 0;
 #include <dirent.h>
 #include <string.h>
 
+#define NOGDI
+#define NOUSER
+#define _INC_MMSYSTEM
+typedef struct tagMSG *LPMSG;
+
 #include <winsock2.h>
 #include <ws2tcpip.h>
+
+#undef VOID
 
 /* defined like that, so it can be downloaded as 1 file, and also used with extensions */
 #ifndef __OVM_H__
