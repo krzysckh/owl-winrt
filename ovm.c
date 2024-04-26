@@ -631,7 +631,7 @@ word prim_sys(word op, word a, word b, word c) {
    }
    case 1: /* open path flags mode → port | #f */
       if (stringp(a)) {
-         int fd = open((const char *)a + W, cnum(b), immval(c));
+         int fd = open((const char *)a + W, cnum(b)|_O_BINARY, immval(c));
          if (fd != -1)
             return make_immediate(fd, TPORT);
       }
