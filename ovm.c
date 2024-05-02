@@ -425,7 +425,7 @@ word mkraw(uint type, hval len) {
    return (word)ob;
 }
 
-word mkseq(uint8_t *v, ulong n, uint T) {
+word mkseq(uint8_t *v, unsigned long n, uint T) {
    size_t len = memend - fp,
       max = len > MAXOBJ ? MAXPAYL + 1 : (len - 1) * W,
       N = MIN2(max-1, n);
