@@ -43,6 +43,12 @@ typedef intptr_t wdiff;
 
 /*** Macros ***/
 
+#define car(l)                      G(l, 1)
+#define cdr(l)                      G(l, 2)
+#define PTR(t)                      mkseq((byte*)&t, sizeof(uintptr_t), TBVEC)
+#define cptr(v)                     ((void*)*(uintptr_t*)(v+W))
+#define mkstring(s)                 mkseq(s, strlen(s), TSTRING)
+#define mkbvec(vp, n)               mkseq(vp, n, TBVEC)
 #define MIN2(a,b)                   ((a)<(b)?(a):(b))
 #define ABS(a)                      ((a<0)?-(a):(a))
 #define mkport(fd)                  make_immediate(fd, TPORT)
@@ -127,9 +133,9 @@ word mkpair(word h, word a, word d);
 word mkint(uint64_t x);
 int64_t cnum(word a);
 word onum(int64_t n, uint s);
-word mkstring(char *s);
 word mkrat(int64_t p, int64_t q);
 word mkfloat(float f);
+word mkseq(uint8_t *v, unsigned long n, uint T);
 #endif
 #ifdef SILENT
 #define not_implemented(s, why) (void)0;
@@ -419,14 +425,15 @@ word mkraw(uint type, hval len) {
    return (word)ob;
 }
 
-word mkstring(char *s) {
+word mkseq(uint8_t *v, ulong n, uint T) {
    size_t len = memend - fp,
       max = len > MAXOBJ ? MAXPAYL + 1 : (len - 1) * W,
-      sl = MIN2(max-1, strlen(s));
+      N = MIN2(max-1, n);
 
-   strncpy((char *)fp + W, s, sl);
-   return mkraw(TSTRING, sl);
+   memcpy((uint8_t*)fp + W, v, N);
+   return mkraw(T, N);
 }
+
 word mkrat(int64_t p, int64_t q) {
    word s = 2, *ob, po = onum(p, 1), qo = onum(q, 1);
 
