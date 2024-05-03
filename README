@@ -22,9 +22,10 @@ CAVEATS
     [x] - networking
     [ ] - wait
     [ ] - kill
+    [ ] - stat for directories
+    [ ] - fcntl
   * non-crucial:
     [ ] - fork
-    [ ] - fcntl
     [ ] - raw terminal operatins
     [ ] - {,sym,read}link
     [ ] - chmod
