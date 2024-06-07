@@ -2,7 +2,12 @@
 /* Owl Lisp runtime */
 
 #include <stdint.h>
-#ifdef NOT_RT
+
+#ifndef NOT_RT
+#define RT
+#endif
+
+#ifndef RT
 static void* heap = 0;
 #endif
 
@@ -200,6 +205,52 @@ word prim_custom(int op, word a, word b, word c);
 #define st_mtim st_mtimespec
 #define st_ctim st_ctimespec
 #endif
+
+/* winrt defines */
+#define O_DIRECTORY 0
+#define O_NOCTTY    0
+#define O_NONBLOCK  0
+#define O_SYNC      0
+#define FD_CLOEXEC  0
+/* winrt defines */
+
+#if 0
+enum {
+   F_DUPFD,
+   F_GETFD,
+   F_SETFD,
+   F_GETFL,
+   F_SETFL,
+   F_GETOWN,
+   F_SETOWN,
+   F_GETLK,
+   F_SETLK,
+   F_SETLKW,
+   F_RDLCK,
+   F_UNLCK,
+   F_WRLCK,
+};
+#endif
+
+#define F_DUPFD 0
+#define F_GETFD 0
+#define F_SETFD 0
+#define F_GETFL 0
+#define F_SETFL 0
+#define F_GETOWN 0
+#define F_SETOWN 0
+#define F_GETLK 0
+#define F_SETLK 0
+#define F_SETLKW 0
+#define F_RDLCK 0
+#define F_UNLCK 0
+#define F_WRLCK 0
+
+int
+fcntl(int fd, int cmd, intptr_t arg)
+{
+   return -1;
+}
 
 volatile unsigned int signals; /* caught signals */
 
@@ -688,7 +739,8 @@ word prim_sys(word op, word a, word b, word c) {
          size_t len = memend - fp;
          const size_t max = len > MAXOBJ ? MAXPAYL : (len - 1) * W;
          len = cnum(b);
-         len = w32read(immval(a), fp + 1, len < max ? len : max);
+
+         len = w32read(immval(a), (void*)(fp + 1), len < max ? len : max);
          if (len == 0)
             return IEOF;
          if (len != (size_t)-1)
@@ -715,10 +767,10 @@ word prim_sys(word op, word a, word b, word c) {
          EOPNOTSUPP, EOVERFLOW, EOWNERDEAD, EPERM, EPIPE, EPROTO, EPROTONOSUPPORT, EPROTOTYPE,
          ERANGE, EROFS, ESPIPE, ESRCH, WSAESTALE, ETIME, ETIMEDOUT, ETXTBSY,
          EWOULDBLOCK, EXDEV, SEEK_SET, SEEK_CUR, SEEK_END, O_EXEC, O_RDONLY, O_RDWR,
-         O_SEARCH, O_WRONLY, O_APPEND, O_CLOEXEC, O_CREAT, 0, O_DSYNC, O_EXCL,
-         0, O_NOFOLLOW, 0, O_RSYNC, 0, O_TRUNC, O_TTY_INIT, O_ACCMODE,
-         0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, CLOCK_MONOTONIC,
+         O_SEARCH, O_WRONLY, O_APPEND, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_DSYNC, O_EXCL,
+         O_NOCTTY, O_NOFOLLOW, O_NONBLOCK, O_RSYNC, O_SYNC, O_TRUNC, O_TTY_INIT, O_ACCMODE,
+         FD_CLOEXEC, F_DUPFD, F_DUPFD_CLOEXEC, F_GETFD, F_SETFD, F_GETFL, F_SETFL, F_GETOWN,
+         F_SETOWN, F_GETLK, F_SETLK, F_SETLKW, F_RDLCK, F_UNLCK, F_WRLCK, CLOCK_MONOTONIC,
          CLOCK_PROCESS_CPUTIME_ID, CLOCK_REALTIME, CLOCK_THREAD_CPUTIME_ID
       };
       return onum(sysconst[immval(a) % (sizeof sysconst / W)], 0); }
@@ -734,7 +786,7 @@ word prim_sys(word op, word a, word b, word c) {
       socklen_t slen = sizeof(si_other);
       word bvec, ipa;
       int recvd;
-      recvd = recvfrom(immval(a), fp + 1, 65528, 0, (struct sockaddr *)&si_other, &slen);
+      recvd = recvfrom(immval(a), (void*)(fp + 1), 65528, 0, (struct sockaddr *)&si_other, &slen);
       if (recvd < 0)
          return IFALSE;
       bvec = mkraw(TBVEC, recvd);
@@ -758,7 +810,13 @@ word prim_sys(word op, word a, word b, word c) {
    case 14: /* strerror errnum → pointer */
       return onum((uintptr_t)strerror(immval(a)), 0);
    case 15: /* fcntl port cmd arg → integer | #f */
-      not_implemented("fcntl", "no fcntl");
+      not_implemented("fcntl", "man.");
+      return IFALSE;
+      if (is_type(a, TPORT)) {
+         int res = fcntl(immval(a), cnum(b), (intptr_t)cnum(c));
+         if (res != -1)
+            return onum(res, 1);
+      }
       return IFALSE;
    case 16: /* getenv key → pointer */
       return onum(stringp(a) ? (uintptr_t)getenv((const char *)a + W) : 0, 0);
@@ -962,7 +1020,7 @@ word prim_sys(word op, word a, word b, word c) {
          size_t len, size = payl_len(header(b));
          len = c != IFALSE ? cnum(c) : size;
          if (len <= size) {
-            len = w32write(immval(a), (const word *)b + 1, len);
+            len = w32write(immval(a), (void*)(((const word *)b) + 1), len);
             if (len != (size_t)-1)
                return onum(len, 0);
          }
@@ -1033,69 +1091,72 @@ word prim_lraw(word wptr, word type) {
    return raw;
 }
 
+
 /* TODO: implement this in owl */
 word do_poll(word a, word b, word c) {
-   fd_set rs, ws, es;
-   word *cur;
-   hval r1, r2;
-   int nfds = 1;
-   struct timeval tv;
-   int res;
-
-   if (llen(a) > 0)
+   if (llen((word*)a) > 0)
       return cons(make_immediate(0, TPORT), F(1));
-   else if (llen(b) > 0)
+   else if (llen((word*)b) > 0)
       return cons(make_immediate(1, TPORT), F(2));
    else
       return cons(make_immediate(2, TPORT), F(3));
+#if 0
+   fd_set rs, ws, es;
+   word *cur;
+   hval r1, r2;
+   int nfds = -1;
+   struct timeval tv;
+   int res;
 
-   // nah man nah
+   FD_ZERO(&rs); FD_ZERO(&ws); FD_ZERO(&es);
+   for (cur = (word *)a; (word)cur != INULL; cur = (word *)cur[2]) {
+      int fd = immval(G(cur[1], 1));
+      if (issocket(fd)) {
+         FD_SET(fd, &rs);
+         FD_SET(fd, &es);
+         if (fd >= nfds)
+            nfds = fd + 1;
+      } else {
+         // this is not true
+         return cons(mkport(fd), F(1));
+      }
+   }
+   for (cur = (word *)b; (word)cur != INULL; cur = (word *)cur[2]) {
+      int fd = immval(G(cur[1], 1));
+      if (issocket(fd)) {
+         FD_SET(fd, &ws);
+         FD_SET(fd, &es);
+         if (fd >= nfds)
+            nfds = fd + 1;
+      } else {
+         return cons(mkport(fd), F(1));
+      }
+   }
+   if (c == IFALSE) {
+      res = select(nfds, &rs, &ws, &es, NULL);
+   } else {
+      hval ms = immval(c);
+      tv.tv_sec = ms/1000;
+      tv.tv_usec = (ms%1000)*1000;
+      res = select(nfds, &rs, &ws, &es, &tv);
+   }
 
-   /* FD_ZERO(&rs); FD_ZERO(&ws); FD_ZERO(&es); */
-   /* for (cur = (word *)a; (word)cur != INULL; cur = (word *)cur[2]) { */
-   /*    SOCKET fd = immval(G(cur[1], 1)); */
-   /*    printf("add %d to rs\n", fd); */
-   /*    FD_SET(fd, &rs); */
-   /*    FD_SET(fd, &es); */
-   /*    if (fd >= nfds) */
-   /*       nfds = fd + 1; */
-   /* } */
-   /* for (cur = (word *)b; (word)cur != INULL; cur = (word *)cur[2]) { */
-   /*    SOCKET fd = immval(G(cur[1], 1)); */
-   /*    printf("add %d to ws\n", fd); */
-   /*    FD_SET(fd, &rs); */
-   /*    FD_SET(fd, &ws); */
-   /*    FD_SET(fd, &es); */
-   /*    if (fd >= nfds) */
-   /*       nfds = fd + 1; */
-   /* } */
-   /* if (c == IFALSE) { */
-   /*    res = select(nfds, &rs, &ws, &es, NULL); */
-   /* } else { */
-   /*    hval ms = immval(c); */
-   /*    tv.tv_sec = ms/1000; */
-   /*    tv.tv_usec = (ms%1000)*1000; */
-   /*    res = select(nfds, &rs, &ws, &es, &tv); */
-   /* } */
-   /* if (res < 1) { */
-   /*    printf("res < 1\n"); */
-   /*    r1 = IFALSE; r2 = BOOL(res != 0); /\* 0 = timeout, otherwise error or signal *\/ */
-   /* } else { */
-   /*    int fd; /\* something active, wake the first thing *\/ */
-   /*    for (fd = 0; ; ++fd) { */
-   /*       if (FD_ISSET(fd, &rs)) { */
-   /*          r1 = make_immediate(fd, TPORT); r2 = F(1); break; */
-   /*       } else if (FD_ISSET(fd, &ws)) { */
-   /*          r1 = make_immediate(fd, TPORT); r2 = F(2); break; */
-   /*       } else if (FD_ISSET(fd, &es)) { */
-   /*          r1 = make_immediate(fd, TPORT); r2 = F(3); break; */
-   /*       } */
-   /*    } */
-
-   /*    printf("ret %d\n", fd); */
-   /* } */
-
-   /* return cons(r1, r2); */
+   if (res < 1) {
+      r1 = IFALSE; r2 = BOOL(res < 0); /* 0 = timeout, otherwise error or signal */
+   } else {
+      int fd; /* something active, wake the first thing */
+      for (fd = 0; ; ++fd) {
+         if (FD_ISSET(fd, &rs)) {
+            r1 = make_immediate(fd, TPORT); r2 = F(1); break;
+         } else if (FD_ISSET(fd, &ws)) {
+            r1 = make_immediate(fd, TPORT); r2 = F(2); break;
+         } else if (FD_ISSET(fd, &es)) {
+            r1 = make_immediate(fd, TPORT); r2 = F(3); break;
+         }
+      }
+   }
+   return cons(r1, r2);
+#endif
 }
 
 word vm(word *ob, word arg) {
