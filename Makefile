@@ -1,7 +1,7 @@
 CC=x86_64-w64-mingw32-gcc
 CC_LEGACY=i686-w64-mingw32-gcc
 CC_HOST=gcc
-CFLAGS=-ggdb -I.
+CFLAGS=-Wall -Wextra -Wno-sign-compare -ggdb -I.
 LDFLAGS=-lws2_32
 
 OL=ol

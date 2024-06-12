@@ -207,15 +207,12 @@ word prim_custom(int op, word a, word b, word c);
 #endif
 
 /* winrt defines */
-#define O_DIRECTORY 0
-#define O_NOCTTY    0
-#define O_NONBLOCK  0
-#define O_SYNC      0
-#define FD_CLOEXEC  0
-/* winrt defines */
-
-#if 0
 enum {
+   O_DIRECTORY,
+   O_NOCTTY,
+   O_NONBLOCK,
+   O_SYNC,
+   FD_CLOEXEC,
    F_DUPFD,
    F_GETFD,
    F_SETFD,
@@ -230,25 +227,30 @@ enum {
    F_UNLCK,
    F_WRLCK,
 };
-#endif
-
-#define F_DUPFD 0
-#define F_GETFD 0
-#define F_SETFD 0
-#define F_GETFL 0
-#define F_SETFL 0
-#define F_GETOWN 0
-#define F_SETOWN 0
-#define F_GETLK 0
-#define F_SETLK 0
-#define F_SETLKW 0
-#define F_RDLCK 0
-#define F_UNLCK 0
-#define F_WRLCK 0
+/* winrt defines */
 
 int
 fcntl(int fd, int cmd, intptr_t arg)
 {
+   switch (cmd) {
+   case F_DUPFD:   not_implemented("F_DUPFD",  ""); break;
+   case F_GETFD:   not_implemented("F_GETFD",  ""); break;
+   case F_SETFD:   not_implemented("F_SETFD",  ""); break;
+   case F_GETFL:   return 0; // me when i lie :3
+   case F_SETFL: {
+      unsigned long mode = arg == O_NONBLOCK ? 1 : 0;
+      return ioctlsocket(fd, FIONBIO, &mode);
+   }
+   case F_GETOWN:  not_implemented("F_GETOWN", ""); break;
+   case F_SETOWN:  not_implemented("F_SETOWN", ""); break;
+   case F_GETLK:   not_implemented("F_GETLK",  ""); break;
+   case F_SETLK:   not_implemented("F_SETLK",  ""); break;
+   case F_SETLKW:  not_implemented("F_SETLKW", ""); break;
+   case F_RDLCK:   not_implemented("F_RDLCK",  ""); break;
+   case F_UNLCK:   not_implemented("F_UNLCK",  ""); break;
+   case F_WRLCK:   not_implemented("F_WRLCK",  ""); break;
+   }
+
    return -1;
 }
 
@@ -677,6 +679,7 @@ word do_poll(word, word, word);
 
 /* system- and io primops */
 word prim_sys(word op, word a, word b, word c) {
+   // printf("prim_sys(%d)\n", immval(op));
    switch (immval(op)) {
    case 0: { /* clock_gettime clock_id → nanoseconds */
       LARGE_INTEGER frequency, currentTime;
@@ -684,12 +687,11 @@ word prim_sys(word op, word a, word b, word c) {
       QueryPerformanceCounter(&currentTime);
 
       double ns = (double)currentTime.QuadPart / (double)frequency.QuadPart * 1e9;
-
       return onum(ns, 1);
    }
    case 1: /* open path flags mode → port | #f */
       if (stringp(a)) {
-         int fd = open((const char *)a + W, cnum(b)|_O_BINARY, immval(c));
+         int fd = _open((const char *)a + W, cnum(b)|_O_BINARY, immval(c));
          if (fd != -1)
             return make_immediate(fd, TPORT);
       }
@@ -810,8 +812,6 @@ word prim_sys(word op, word a, word b, word c) {
    case 14: /* strerror errnum → pointer */
       return onum((uintptr_t)strerror(immval(a)), 0);
    case 15: /* fcntl port cmd arg → integer | #f */
-      not_implemented("fcntl", "man.");
-      return IFALSE;
       if (is_type(a, TPORT)) {
          int res = fcntl(immval(a), cnum(b), (intptr_t)cnum(c));
          if (res != -1)
@@ -904,7 +904,7 @@ word prim_sys(word op, word a, word b, word c) {
       peer.sin_family = AF_INET;
       peer.sin_port = htons(port);
       peer.sin_addr.s_addr = htonl(ip[0] << 24 | ip[1] << 16 | ip[2] << 8 | ip[3]);
-      return BOOL(sendto(sock, data, len, 0, (struct sockaddr *)&peer, sizeof(peer)) != -1); }
+      return BOOL(sendto(sock, (void*)data, len, 0, (struct sockaddr *)&peer, sizeof(peer)) != -1); }
    case 28: /* setenv <owl-raw-bvec-or-ascii-leaf-string> <owl-raw-bvec-or-ascii-leaf-string-or-#f> */
       if (stringp(a) && (b == IFALSE || stringp(b))) {
          const char *name = (const char *)a + W;
@@ -962,7 +962,7 @@ word prim_sys(word op, word a, word b, word c) {
          struct stat st;
          int fd;
          if (b != IFALSE)
-            fd = open((char*)a + W, O_RDONLY);
+            fd = _open((char*)a + W, O_RDONLY);
          else
             fd = immval(a);
 
@@ -1091,22 +1091,17 @@ word prim_lraw(word wptr, word type) {
    return raw;
 }
 
-
-/* TODO: implement this in owl */
-word do_poll(word a, word b, word c) {
-   if (llen((word*)a) > 0)
-      return cons(make_immediate(0, TPORT), F(1));
-   else if (llen((word*)b) > 0)
-      return cons(make_immediate(1, TPORT), F(2));
-   else
-      return cons(make_immediate(2, TPORT), F(3));
-#if 0
+word
+do_poll_sockets(word a, word b, word c)
+{
    fd_set rs, ws, es;
    word *cur;
    hval r1, r2;
    int nfds = -1;
    struct timeval tv;
    int res;
+
+   // printf("poll_sockets\n");
 
    FD_ZERO(&rs); FD_ZERO(&ws); FD_ZERO(&es);
    for (cur = (word *)a; (word)cur != INULL; cur = (word *)cur[2]) {
@@ -1116,9 +1111,6 @@ word do_poll(word a, word b, word c) {
          FD_SET(fd, &es);
          if (fd >= nfds)
             nfds = fd + 1;
-      } else {
-         // this is not true
-         return cons(mkport(fd), F(1));
       }
    }
    for (cur = (word *)b; (word)cur != INULL; cur = (word *)cur[2]) {
@@ -1128,8 +1120,6 @@ word do_poll(word a, word b, word c) {
          FD_SET(fd, &es);
          if (fd >= nfds)
             nfds = fd + 1;
-      } else {
-         return cons(mkport(fd), F(1));
       }
    }
    if (c == IFALSE) {
@@ -1156,7 +1146,66 @@ word do_poll(word a, word b, word c) {
       }
    }
    return cons(r1, r2);
-#endif
+}
+
+/* this shouldn't work */
+word
+do_poll_fds(word a, word b, word c)
+{
+   // printf("poll_fds\n");
+
+   // return cons(mkport(1), F(2));
+   if (llen((word*)a) > 0)
+      return cons(make_immediate(0, TPORT), F(1));
+   else if (llen((word*)b) > 0)
+      return cons(make_immediate(1, TPORT), F(2));
+   else
+      return cons(make_immediate(2, TPORT), F(3));
+   /*
+   HANDLE hs[llen((word*)a) + llen((word*)b)];
+   int n = 0, res;
+   word *cur;
+
+   for (cur = (word *)a; (word)cur != INULL; cur = (word*)cur[2]) {
+      int fd = immval(G(cur[1], 1));
+      if (!issocket(fd))
+         if (fd > 2)
+            hs[n++] = (HANDLE)_get_osfhandle(fd);
+   }
+   for (cur = (word *)b; (word)cur != INULL; cur = (word*)cur[2]) {
+      int fd = immval(G(cur[1], 1));
+      if (!issocket(fd))
+         if (fd > 2)
+            hs[n++] = (HANDLE)_get_osfhandle(fd);
+   }
+
+   printf("n = %d, fd = %d\n", n, immval(G(((word*)b)[1], 1)));
+
+   res = WaitForMultipleObjects(n, hs, 0, c == IFALSE ? 0 : immval(c));
+
+   if (res == WAIT_FAILED) {
+      return cons(IFALSE, ITRUE);
+   } if (res == WAIT_TIMEOUT) {
+      return cons(IFALSE, IFALSE);
+   } else {
+      printf("wait ok %ld\n", res-WAIT_OBJECT_0);
+      return cons(mkport(_open_osfhandle((intptr_t)(res-WAIT_OBJECT_0), _O_RDWR)), F(1));
+   }
+   */
+}
+
+/* a = rs, b = ws, c = timeout */
+word do_poll(word a, word b, word c) {
+   if (llen((word*)a) < 1 && llen((word*)b) < 1)
+      return do_poll_sockets(a, b, c);
+   if (llen((word*)a) > 0)
+      if (issocket(immval(car(a))))
+         return do_poll_sockets(a, b, c);
+   if (llen((word*)b) > 0)
+      if (issocket(immval(car(b))))
+         return do_poll_sockets(a, b, c);
+
+   return do_poll_fds(a, b, c);
 }
 
 word vm(word *ob, word arg) {
@@ -1637,7 +1686,7 @@ void read_heap(const char *path) {
    struct stat st;
    off_t pos = 0;
    ssize_t n;
-   int fd = open(path, O_RDONLY);
+   int fd = _open(path, O_RDONLY);
    if (fd == -1)
       exit(1);
    if (fstat(fd, &st) != 0)
@@ -1711,7 +1760,7 @@ int main(int nargs, char **argv) {
    int rval, nobjs=0, nwords=0;
 
    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
-      return IFALSE;
+      return 21;
 
    find_heap(&nargs, &argv, &nobjs, &nwords);
    setup(nwords, nobjs);
