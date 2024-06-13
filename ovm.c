@@ -238,7 +238,7 @@ fcntl(int fd, int cmd, intptr_t arg)
    case F_SETFD:   not_implemented("F_SETFD",  ""); break;
    case F_GETFL:   return 0; // me when i lie :3
    case F_SETFL: {
-      unsigned long mode = arg == O_NONBLOCK ? 1 : 0;
+      unsigned long mode = arg & O_NONBLOCK ? 1 : 0;
       return ioctlsocket(fd, FIONBIO, &mode);
    }
    case F_GETOWN:  not_implemented("F_GETOWN", ""); break;
@@ -264,6 +264,7 @@ void catch_signal(int signal) {
 /*** Globals and Prototypes ***/
 
 WSADATA wsa;
+int wsaerrno = -1;
 extern char **environ;
 
 /* memstart <= genstart <= memend */
@@ -519,17 +520,10 @@ word mkfloat(float f) {
 /*** Primops called from VM and generated C-code ***/
 
 /* win32 sockets are not ports, so you cannot write() to them */
-int sockets[2<<10] = {0}, sockets_n = 0;
+#define MAX_SOCKETS (2<<12)
+int sockets[MAX_SOCKETS] = {0};
 
-short
-issocket(int fd)
-{
-   int i;
-   for (i = 0; i < sockets_n; ++i)
-      if (sockets[i] == fd)
-         return 1;
-   return 0;
-}
+#define issocket(fd) ((fd) < MAX_SOCKETS && sockets[(fd)])
 
 int
 w32write(int fd, char* buf, size_t n)
@@ -552,15 +546,7 @@ w32read(int fd, char* buf, size_t n)
 int
 w32close(int fd)
 {
-   int i;
-
-   for (i = 0; i < sockets_n; ++i)
-      if (sockets[i] == fd) {
-         for (; i < sockets_n; ++i)
-            sockets[i] = sockets[i-1];
-         break;
-      }
-
+   sockets[fd] = 0;
    return close(fd);
 }
 
@@ -595,7 +581,7 @@ hval prim_connect(word *host, word port, word type) {
       return IFALSE;
    }
 
-   sockets[sockets_n++] = sock;
+   sockets[sock] = 1;
 
    return make_immediate(sock, TPORT);
 }
@@ -679,7 +665,6 @@ word do_poll(word, word, word);
 
 /* system- and io primops */
 word prim_sys(word op, word a, word b, word c) {
-   // printf("prim_sys(%d)\n", immval(op));
    switch (immval(op)) {
    case 0: { /* clock_gettime clock_id → nanoseconds */
       LARGE_INTEGER frequency, currentTime;
@@ -709,6 +694,7 @@ word prim_sys(word op, word a, word b, word c) {
       myaddr.sin_port = htons(port);
       myaddr.sin_addr.s_addr = INADDR_ANY;
       s = socket(AF_INET, (udp ? SOCK_DGRAM : SOCK_STREAM), (udp ? IPPROTO_UDP : 0));
+      fcntl(s, F_SETFL, O_NONBLOCK);
       if (s < 0)
          return IFALSE;
       if (type != 1) {
@@ -724,31 +710,35 @@ word prim_sys(word op, word a, word b, word c) {
             return IFALSE;
          }
       }
+      sockets[s] = 1;
       return make_immediate(s, TPORT); }
    case 4: { /* 4 = accept port -> rval=False|(ip . fd) */
       int sock = immval(a);
       struct sockaddr_in addr;
       socklen_t len = sizeof(addr);
-      int fd;
+      SOCKET fd;
       word ipa;
       fd = accept(sock, (struct sockaddr *)&addr, &len);
-      if (fd < 0) return IFALSE;
+      if (fd == INVALID_SOCKET) return IFALSE;
+      sockets[fd] = 1;
       ipa = mkraw(TBVEC, 4);
       memcpy((word *)ipa + 1, &addr.sin_addr, 4);
       return cons(ipa, make_immediate(fd, TPORT)); }
    case 5: /* read fd len -> bvec | EOF | #f */
       if (is_type(a, TPORT)) {
-         size_t len = memend - fp;
+         long long int len = memend - fp;
          const size_t max = len > MAXOBJ ? MAXPAYL : (len - 1) * W;
          len = cnum(b);
 
          len = w32read(immval(a), (void*)(fp + 1), len < max ? len : max);
+         if (len < 0) {
+            wsaerrno = WSAGetLastError();
+            return IFALSE;
+         }
          if (len == 0)
             return IEOF;
-         if (len != (size_t)-1)
-            return mkraw(TBVEC, len);
-      }
-      return IFALSE;
+         return mkraw(TBVEC, len);
+      } return IFALSE;
    case 6:
       setdown();
       exit(immval(a)); /* stop the press */
@@ -768,7 +758,7 @@ word prim_sys(word op, word a, word b, word c) {
          ENOTCONN, ENOTDIR, ENOTEMPTY, ENOTRECOVERABLE, ENOTSOCK, ENOTSUP, ENOTTY, ENXIO,
          EOPNOTSUPP, EOVERFLOW, EOWNERDEAD, EPERM, EPIPE, EPROTO, EPROTONOSUPPORT, EPROTOTYPE,
          ERANGE, EROFS, ESPIPE, ESRCH, WSAESTALE, ETIME, ETIMEDOUT, ETXTBSY,
-         EWOULDBLOCK, EXDEV, SEEK_SET, SEEK_CUR, SEEK_END, O_EXEC, O_RDONLY, O_RDWR,
+         WSAEWOULDBLOCK, EXDEV, SEEK_SET, SEEK_CUR, SEEK_END, O_EXEC, O_RDONLY, O_RDWR,
          O_SEARCH, O_WRONLY, O_APPEND, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_DSYNC, O_EXCL,
          O_NOCTTY, O_NOFOLLOW, O_NONBLOCK, O_RSYNC, O_SYNC, O_TRUNC, O_TTY_INIT, O_ACCMODE,
          FD_CLOEXEC, F_DUPFD, F_DUPFD_CLOEXEC, F_GETFD, F_SETFD, F_GETFL, F_SETFL, F_GETOWN,
@@ -778,7 +768,7 @@ word prim_sys(word op, word a, word b, word c) {
       return onum(sysconst[immval(a) % (sizeof sysconst / W)], 0); }
    case 9: /* return process variables */
       return onum(
-                  a == F(0) ? errno :
+                  a == F(0) ? (wsaerrno >= 0 ? wsaerrno : errno) :
                   a == F(1) ? (uintptr_t)environ :
                   a == F(8) ? nalloc + fp - memstart : /* total allocated objects so far */
                   a == F(9) ? maxheap : /* maximum heap size in a major gc */
@@ -835,7 +825,7 @@ word prim_sys(word op, word a, word b, word c) {
       free(args);
       return IFALSE; }
    case 18: { /* fork → #f: failed, 0: we're in child process, integer: we're in parent process */
-      not_implemented("fork", "fuck");
+      not_implemented("fork", "thank you winapi");
       return IFALSE;
    }
    case 19: { /* wait <pid> <respair> _ */
@@ -962,7 +952,7 @@ word prim_sys(word op, word a, word b, word c) {
          struct stat st;
          int fd;
          if (b != IFALSE)
-            fd = _open((char*)a + W, O_RDONLY);
+            fd = _open((char*)a + W, O_BINARY, O_RDONLY);
          else
             fd = immval(a);
 
@@ -1017,10 +1007,14 @@ word prim_sys(word op, word a, word b, word c) {
    }
    case 42: /* write fd data len | #f → nbytes | #f */
       if (is_type(a, TPORT) && allocp(b)) {
-         size_t len, size = payl_len(header(b));
+         long long len, size = payl_len(header(b));
          len = c != IFALSE ? cnum(c) : size;
          if (len <= size) {
             len = w32write(immval(a), (void*)(((const word *)b) + 1), len);
+            if (len < 0) {
+               wsaerrno = WSAGetLastError();
+               return IFALSE;
+            }
             if (len != (size_t)-1)
                return onum(len, 0);
          }
@@ -1091,76 +1085,25 @@ word prim_lraw(word wptr, word type) {
    return raw;
 }
 
-word
-do_poll_sockets(word a, word b, word c)
-{
-   fd_set rs, ws, es;
-   word *cur;
-   hval r1, r2;
-   int nfds = -1;
-   struct timeval tv;
-   int res;
-
-   // printf("poll_sockets\n");
-
-   FD_ZERO(&rs); FD_ZERO(&ws); FD_ZERO(&es);
-   for (cur = (word *)a; (word)cur != INULL; cur = (word *)cur[2]) {
-      int fd = immval(G(cur[1], 1));
-      if (issocket(fd)) {
-         FD_SET(fd, &rs);
-         FD_SET(fd, &es);
-         if (fd >= nfds)
-            nfds = fd + 1;
-      }
-   }
-   for (cur = (word *)b; (word)cur != INULL; cur = (word *)cur[2]) {
-      int fd = immval(G(cur[1], 1));
-      if (issocket(fd)) {
-         FD_SET(fd, &ws);
-         FD_SET(fd, &es);
-         if (fd >= nfds)
-            nfds = fd + 1;
-      }
-   }
-   if (c == IFALSE) {
-      res = select(nfds, &rs, &ws, &es, NULL);
-   } else {
-      hval ms = immval(c);
-      tv.tv_sec = ms/1000;
-      tv.tv_usec = (ms%1000)*1000;
-      res = select(nfds, &rs, &ws, &es, &tv);
-   }
-
-   if (res < 1) {
-      r1 = IFALSE; r2 = BOOL(res < 0); /* 0 = timeout, otherwise error or signal */
-   } else {
-      int fd; /* something active, wake the first thing */
-      for (fd = 0; ; ++fd) {
-         if (FD_ISSET(fd, &rs)) {
-            r1 = make_immediate(fd, TPORT); r2 = F(1); break;
-         } else if (FD_ISSET(fd, &ws)) {
-            r1 = make_immediate(fd, TPORT); r2 = F(2); break;
-         } else if (FD_ISSET(fd, &es)) {
-            r1 = make_immediate(fd, TPORT); r2 = F(3); break;
-         }
-      }
-   }
-   return cons(r1, r2);
-}
-
 /* this shouldn't work */
 word
 do_poll_fds(word a, word b, word c)
 {
-   // printf("poll_fds\n");
+   word *cur;
+   // puts("poll_fds");
 
    // return cons(mkport(1), F(2));
-   if (llen((word*)a) > 0)
-      return cons(make_immediate(0, TPORT), F(1));
-   else if (llen((word*)b) > 0)
-      return cons(make_immediate(1, TPORT), F(2));
-   else
-      return cons(make_immediate(2, TPORT), F(3));
+   for (cur = (word *)a; (word)cur != INULL; cur = (word *)cur[2]) {
+      int fd = immval(G(cur[1], 1));
+      if (!issocket(fd))
+         return cons(make_immediate(0, TPORT), F(1));
+   }
+   for (cur = (word *)b; (word)cur != INULL; cur = (word *)cur[2]) {
+      int fd = immval(G(cur[1], 1));
+      if (!issocket(fd))
+         return cons(make_immediate(1, TPORT), F(2));
+   }
+   return cons(make_immediate(2, TPORT), F(3));
    /*
    HANDLE hs[llen((word*)a) + llen((word*)b)];
    int n = 0, res;
@@ -1194,16 +1137,81 @@ do_poll_fds(word a, word b, word c)
    */
 }
 
+word
+do_poll_sockets(word a, word b, word c)
+{
+   fd_set rs, ws, es;
+   word *cur;
+   hval r1, r2;
+   int nfds = -1;
+   struct timeval tv;
+   int res;
+
+   // puts("do_poll_sockets");
+
+   FD_ZERO(&rs); FD_ZERO(&ws); FD_ZERO(&es);
+   for (cur = (word *)a; (word)cur != INULL; cur = (word *)cur[2]) {
+      int fd = immval(G(cur[1], 1));
+      if (issocket(fd)) {
+         FD_SET(fd, &rs);
+         FD_SET(fd, &es);
+         if (fd >= nfds)
+            nfds = fd + 1;
+      } else {
+         return do_poll_fds(a, b, c);
+      }
+   }
+   for (cur = (word *)b; (word)cur != INULL; cur = (word *)cur[2]) {
+      int fd = immval(G(cur[1], 1));
+      if (issocket(fd)) {
+         FD_SET(fd, &ws);
+         FD_SET(fd, &es);
+         if (fd >= nfds)
+            nfds = fd + 1;
+      } else {
+         return do_poll_fds(a, b, c);
+      }
+   }
+   if (c == IFALSE) {
+      res = select(nfds, &rs, &ws, &es, NULL);
+   } else {
+      hval ms = immval(c);
+      tv.tv_sec = ms/1000;
+      tv.tv_usec = (ms%1000)*1000;
+      res = select(nfds, &rs, &ws, &es, &tv);
+   }
+
+   if (res < 1) {
+      r1 = IFALSE; r2 = BOOL(res < 0); /* 0 = timeout, otherwise error or signal */
+   } else {
+      int fd; /* something active, wake the first thing */
+      for (fd = 0; ; ++fd) {
+         if (FD_ISSET(fd, &rs)) {
+            r1 = make_immediate(fd, TPORT); r2 = F(1); break;
+         } else if (FD_ISSET(fd, &ws)) {
+            r1 = make_immediate(fd, TPORT); r2 = F(2); break;
+         } else if (FD_ISSET(fd, &es)) {
+            r1 = make_immediate(fd, TPORT); r2 = F(3); break;
+         }
+      }
+   }
+   return cons(r1, r2);
+}
+
+
 /* a = rs, b = ws, c = timeout */
 word do_poll(word a, word b, word c) {
    if (llen((word*)a) < 1 && llen((word*)b) < 1)
       return do_poll_sockets(a, b, c);
-   if (llen((word*)a) > 0)
-      if (issocket(immval(car(a))))
+
+   if (llen((word*)a) > 0) {
+      if (issocket(immval(G(((word*)a)[1], 1))))
          return do_poll_sockets(a, b, c);
-   if (llen((word*)b) > 0)
-      if (issocket(immval(car(b))))
+   }
+   if (llen((word*)b) > 0) {
+      if (issocket(immval(G(((word*)b)[1], 1))))
          return do_poll_sockets(a, b, c);
+   }
 
    return do_poll_fds(a, b, c);
 }
@@ -1686,7 +1694,7 @@ void read_heap(const char *path) {
    struct stat st;
    off_t pos = 0;
    ssize_t n;
-   int fd = _open(path, O_RDONLY);
+   int fd = _open(path, O_BINARY, O_RDONLY);
    if (fd == -1)
       exit(1);
    if (fstat(fd, &st) != 0)

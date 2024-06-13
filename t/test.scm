@@ -14,11 +14,11 @@
   ;; (OK eqv? (print "Hello, World!") #t)
   ;; (OK eqv? (file? "Makefile") #t)
 
-  (print 'a)
+  ;; (print 'a)
 
-  (define f (open-input-file "lsdfkjflsdjk"))
-  (print (readable? f))
-  (print "signgngs")
+  ;; (define f (open-input-file "lsdfkjflsdjk"))
+  ;; (print (readable? f))
+  ;; (print "signgngs")
 
   (thread
    's0
