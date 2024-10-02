@@ -139,7 +139,8 @@ word mkint(uint64_t x);
 int64_t cnum(word a);
 word onum(int64_t n, uint s);
 word mkrat(int64_t p, int64_t q);
-word mkfloat(float f);
+word mkrat_approx(float f);
+double cdouble(word);
 word mkseq(uint8_t *v, unsigned long n, uint T);
 #endif
 #ifdef SILENT
@@ -500,7 +501,8 @@ word mkrat(int64_t p, int64_t q) {
    return (word)ob;
 }
 
-word mkfloat(float f) {
+// not copying the new function yet
+word mkrat_approx(float f) {
    int64_t v = 1, m = f < 0;
    f = ABS(f);
 
@@ -514,6 +516,18 @@ word mkfloat(float f) {
    }
 
    return mkrat(m ? -f : f, v);
+}
+
+double cdouble(word x) {
+   if (allocp(x)) {
+      if (is_type(*(word *)x,TRAT))
+         return (double)cnum(car(x))/(double)cnum(cdr(x));
+      else if (header(x) == NUMHDR || header(x) == NUMNHDR)
+         return (double)cnum(x);
+   } else if (is_type(x,TNUM)||is_type(x,TNUMN))
+      return (double)cnum(x);
+
+   return 0.0/0.0;
 }
 
 
