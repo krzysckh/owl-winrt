@@ -560,7 +560,11 @@ w32read(int fd, char* buf, size_t n)
 int
 w32close(int fd)
 {
-   sockets[fd] = 0;
+   if (issocket(fd)) {
+      sockets[fd] = 0;
+      return closesocket(fd);
+   }
+
    return close(fd);
 }
 
