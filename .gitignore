@@ -4,3 +4,5 @@ makeol
 test.c
 ol.c
 *.~undo-tree~
+*.fasl
+*.zip
