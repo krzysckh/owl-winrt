@@ -1,6 +1,12 @@
 a rather underwhelming port of ovm.c to win32.
 ----------------------------------------------
 
+archivization notice:
+
+this project is getting archived as the development will move to the owl lisp repo under ext/win32.
+
+---
+
 BUILDING
 
   $ $EDITOR Makefile # use common sense
